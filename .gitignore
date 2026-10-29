@@ -1,0 +1,15 @@
+# 分析产物（样本数据不入库）
+analysis_out/
+*.csv
+*.pcap
+*.pcapng
+
+# 证据文件不入库
+*.evtx
+*.evt
+*.zip
+*.rar
+
+# 临时
+*.tmp
+*.bak
