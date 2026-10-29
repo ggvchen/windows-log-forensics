@@ -74,7 +74,16 @@ function Read-Evtx {
             continue
         }
         $n = 0
-        while ($null -ne ($rec = $reader.ReadEvent())) {
+        $broken = $false
+        while ($true) {
+            # A corrupt record makes ReadEvent throw; keep what we already have
+            try { $rec = $reader.ReadEvent() }
+            catch {
+                Write-Warning ("{0}: read aborted after {1} events - {2}" -f $f, $n, $_.Exception.Message)
+                $broken = $true
+                break
+            }
+            if ($null -eq $rec) { break }
             $n++
             if ($Cap -gt 0 -and $n -gt $Cap) { $rec.Dispose(); break }
             $time = $null
@@ -90,6 +99,7 @@ function Read-Evtx {
                 Record       = $rec
             })
         }
+        if ($broken) { Write-Warning ("{0}: PARTIAL results, log file is damaged" -f $f) }
         $reader.Dispose()
     }
     return ,$list
