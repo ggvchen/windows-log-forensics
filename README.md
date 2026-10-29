@@ -51,8 +51,9 @@ powershell -File windows-log-forensics/scripts/parse_evtx.ps1 -Path 你的日志
 # 4. 持久化：4698 自动解析 TaskContent XML，直出 Command / Trigger / RunAs
 .\parse_evtx.ps1 -Path Security.evtx -Mode tasks
 
-# 5. 精读任意事件
+# 5. 精读任意事件（多个 ID 用逗号或空格分隔）
 .\parse_evtx.ps1 -Path Security.evtx -Mode dump -Ids 4624,4648,4688
+.\parse_evtx.ps1 -Path Security.evtx -Mode dump -Ids "4624 4648 4688"
 
 # 6. 一键全量导出（CSV + TXT 落到 analysis_out\）
 .\parse_evtx.ps1 -Path C:\case -Mode all -Out C:\case\out
@@ -126,6 +127,22 @@ Count Ip                        EventId LogonType User             Domain  First
   甚至嵌套在 `Arguments` 里，正则容易截断。
 - **为什么不追求覆盖所有 EventID**：聚焦"账户 → 登录 → 提权 → 持久化"这条主链，
   覆盖绝大多数 Windows 单机应急场景。AD 域内攻击（DCSync、Golden Ticket）留给专项。
+
+## 测试
+
+用 39 个用例做过一轮完整验证，覆盖功能、边界、数据质量、性能四类：
+
+| 类别 | 用例数 | 覆盖内容 |
+|---|---|---|
+| 功能 | 8 | 七种模式各自的输出数量与内容（4698 的 Command/Trigger/RunAs 是否被正确解析） |
+| 边界 | 14 | dump 缺 `-Ids`、路径不存在、空目录、垃圾文件、`-MaxEvents`、目录批量、中文路径、嵌套 `-Out`、非法 `-Mode`、重复执行确定性、无效 EventID |
+| 多通道 | 4 | System 通道 55070 条事件不崩、accounts 返回 0、7045 服务安装可提取 |
+| 数据质量 | 6 | CSV 表头/行数/UTF-8 BOM、`Import-Csv` 往返、账号正文完整、netlogons 已剔除回环 |
+| 性能 | 3 | 9707 条 1.5s；21MB/55070 条 6.0s；`all` 模式 14.4s |
+| 交叉验证 | 4 | 与 `wevtutil qe`（独立解析器）逐 ID 比对计数，4624=273、4625=12、总数 9707 全部一致 |
+
+性能那一栏的 `all` 模式比单独跑慢，是因为它要渲染约 800 条事件的消息正文 —— 正是上面说的那个 300 倍开销，
+属于设计上的取舍：宁可慢 10 秒，也要把证据正文落盘。
 
 ## 已知边界
 

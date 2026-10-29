@@ -44,7 +44,7 @@ param(
     [Parameter(Mandatory=$true)][string]$Path,
     [ValidateSet('summary','logons','netlogons','accounts','tasks','dump','all')]
     [string]$Mode = 'summary',
-    [int[]]$Ids = @(),
+    [string[]]$Ids = @(),
     [string]$Out = '',
     [int]$MaxEvents = 0
 )
@@ -309,6 +309,18 @@ function Invoke-Tasks {
 
 # ---------- main ----------
 
+# Accept both "-Ids 4624,4648" (array) and "-Ids '4624,4648'" (single string via -File)
+$wanted = New-Object System.Collections.ArrayList
+foreach ($s in $Ids) {
+    foreach ($p in ([string]$s -split '[,\s]+')) {
+        $t = $p.Trim()
+        if ($t -eq '') { continue }
+        $n = 0
+        if ([int]::TryParse($t, [ref]$n)) { [void]$wanted.Add($n) }
+        else { Write-Warning ("ignoring invalid EventID: {0}" -f $t) }
+    }
+}
+
 $files = Get-EvtxFiles -P $Path
 if ($files.Count -eq 0) { Write-Error "No .evtx found at $Path"; exit 1 }
 Write-Host ("[*] input: {0} file(s)" -f $files.Count)
@@ -338,6 +350,6 @@ switch ($Mode) {
     'netlogons' { Invoke-NetLogons -Events $events -OutDir '' }
     'accounts'  { Invoke-Accounts  -Events $events -OutDir '' }
     'tasks'     { Invoke-Tasks     -Events $events -OutDir '' }
-    'dump'      { if ($Ids.Count -eq 0) { Write-Error '-Mode dump needs -Ids' }
-                  Invoke-Dump -Events $events -Want $Ids -OutDir '' }
+    'dump'      { if ($wanted.Count -eq 0) { Write-Error '-Mode dump needs -Ids' }
+                  Invoke-Dump -Events $events -Want $wanted.ToArray() -OutDir '' }
 }
