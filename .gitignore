@@ -13,3 +13,4 @@ analysis_out/
 # 临时
 *.tmp
 *.bak
+tests/.cache/

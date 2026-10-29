@@ -32,31 +32,49 @@ description: 分析 Windows 日志（EVTX：Security、System、Sysmon、PowerSh
 
 ## 三、脚本用法
 
-```powershell
+两套入口，模式与参数完全一致：`scripts/parse_evtx.ps1`（Windows，无依赖）与
+`scripts/parse_evtx.py`（macOS / Linux，需 `python3 -m pip install --user python-evtx`）。
+离线机器只有 Windows，就只用 ps1；本机是 macOS/Linux，就用 py。
+
+```bash
 # 总览
-powershell -File scripts/parse_evtx.ps1 -Path C:\case\Security.evtx -Mode summary
+python3 scripts/parse_evtx.py -Path case/Security.evtx -Mode summary
 
 # 只看远端登录（自动排除 127.0.0.1 / ::1 / -）
-powershell -File scripts/parse_evtx.ps1 -Path C:\case\Security.evtx -Mode netlogons
+python3 scripts/parse_evtx.py -Path case/Security.evtx -Mode netlogons
 
 # 账户全生命周期
-powershell -File scripts/parse_evtx.ps1 -Path C:\case\Security.evtx -Mode accounts
+python3 scripts/parse_evtx.py -Path case/Security.evtx -Mode accounts
 
 # 计划任务与服务（自动解析 4698 的 TaskContent XML）
-powershell -File scripts/parse_evtx.ps1 -Path C:\case\Security.evtx -Mode tasks
+python3 scripts/parse_evtx.py -Path case/Security.evtx -Mode tasks
 
-# 精读任意事件
-powershell -File scripts/parse_evtx.ps1 -Path C:\case\Security.evtx -Mode dump -Ids 4624,4648,4688
+# 精读任意事件（逗号或空格分隔）
+python3 scripts/parse_evtx.py -Path case/Security.evtx -Mode dump -Ids 4624,4648
 
-# 一键全量导出（CSV + TXT 落到 analysis_out\）
-powershell -File scripts/parse_evtx.ps1 -Path C:\case -Mode all -Out C:\case\out
+# 一键全量导出（CSV + TXT 落到 analysis_out/）
+python3 scripts/parse_evtx.py -Path case -Mode all -Out case/out
 ```
 
-`-Path` 支持目录（批量读该目录下所有 .evtx）。CSV 出来后直接用 Read/Grep 复核，比反复调 `Get-WinEvent` 快得多。
+Windows 侧把 `python3 scripts/parse_evtx.py` 换成
+`powershell -File scripts/parse_evtx.ps1` 即可，参数名相同（`-Path/-Mode/-Ids/-Out/-MaxEvents`）。
 
-脚本用 `EventLogReader` 枚举 + `ToXml()` 解析，**消息正文只在要打印时才渲染**——`FormatDescription` 全量渲染比解析 XML 慢约 300 倍，是唯一会拖垮运行时间的地方。9700 条 Security 日志实测约 1 秒。
+`-Path` 支持目录（批量读该目录下所有 `.evtx`，扩展名大小写不敏感）。
+两个版本都是「先全量解析成内存结构，再按模式输出」，所以多模式复用同一次解析。
 
-日志极大时先加 `-MaxEvents 50000` 快速分诊，再对目标时间段全量跑。
+**平台差异（仅 py 版）**：
+
+- 事件正文依赖 Windows 消息资源 DLL，非 Windows 环境无法渲染原句，`accounts/tasks/dump`
+  改为输出**结构化字段块**（字段名与 EventData 一致），并额外解析任务 XML；取证结论不受影响。
+- 多出 `-Utc` 开关：默认按本机时区显示，跨时区取证时用它统一成 UTC。
+- 单模式加 `-Out` 也会落盘（ps1 的 `-Out` 只在 `all` 模式生效）。
+- 纯 Python 解析约 **1.6 ms/事件**（10k 条约 16 秒），比 .NET 版慢一个量级，
+  但避免装 PowerShell；日志极大时先 `-MaxEvents 50000` 分诊。
+- 增加**文件结构校验**：合法 evtx 必须是 `4096 + N*65536` 字节，不满足即告警
+  `PARTIAL results`，避免截断日志被当成「没发生」。
+
+退出码：`0` 成功；`1` 找不到 `.evtx`；`2` 无法解析 / 参数错误（dump 缺 `-Ids`、非法 `-Mode`）。
+
 
 ## 四、七类高频问题的取证映射
 
@@ -98,7 +116,9 @@ powershell -File scripts/parse_evtx.ps1 -Path C:\case -Mode all -Out C:\case\out
 
 ## 七、资源索引
 
-- `scripts/parse_evtx.ps1` — 解析脚本（summary/logons/netlogons/accounts/tasks/dump/all）
+- `scripts/parse_evtx.ps1` — Windows 解析脚本（summary/logons/netlogons/accounts/tasks/dump/all）
+- `scripts/parse_evtx.py` — macOS/Linux 解析脚本，同模式同参数，依赖 python-evtx
+- `tests/test_modules.py` — 全量模块测试（功能/边界/数据质量/多通道/性能/交叉验证）
 - `references/eventids.md` — 安全日志事件 ID 速查与关键字段
 - `references/playbooks.md` — 攻击链模式、场景化取证路径、排除规则
 - `references/report-template.md` — 中文取证报告模板

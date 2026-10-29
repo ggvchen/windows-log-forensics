@@ -36,6 +36,17 @@ powershell -File windows-log-forensics/scripts/parse_evtx.ps1 -Path 你的日志
 
 要求：Windows + PowerShell 5.1（系统自带，无第三方依赖）。`.evtx` 需先解压，`-Path` 也支持整个目录。
 
+### macOS / Linux
+
+```bash
+python3 -m pip install --user python-evtx
+git clone https://github.com/ggvchen/windows-log-forensics.git
+python3 windows-log-forensics/scripts/parse_evtx.py -Path 你的日志.evtx -Mode summary
+```
+
+参数与 ps1 版完全一致：`-Path / -Mode / -Ids / -Out / -MaxEvents`，另有 `-Utc`。
+差异见下文「本机适配」。
+
 ## 快速开始
 
 ```powershell
@@ -70,6 +81,32 @@ powershell -File windows-log-forensics/scripts/parse_evtx.ps1 -Path 你的日志
 | `tasks` | 计划任务与服务安装，解析任务 XML | 控制台 + `tasks.txt` |
 | `dump` | 按 `-Ids` 精读任意事件正文 | 控制台 |
 | `all` | 以上全部导出 | `analysis_out\` |
+
+## 本机适配（macOS / Linux）
+
+`scripts/parse_evtx.py` 是 ps1 的等价移植，七种模式与参数一一对应：
+
+| 差异点 | ps1（Windows） | py（macOS / Linux） |
+|---|---|---|
+| 依赖 | PowerShell 5.1 | `python-evtx` |
+| 事件正文 | `FormatDescription()` 原句 | 结构化字段块 + 解析后的任务 XML |
+| 时区 | 本机时区 | 本机时区，`-Utc` 可强制 UTC |
+| 单模式 `-Out` | 仅 `all` 生效 | 任意模式均可落盘 |
+| 损坏日志 | 读到坏记录为止 | 额外做 `4096 + N*65536` 结构校验，截断即告警 `PARTIAL results` |
+| 性能 | 9707 条约 1.2s | 9707 条约 16–17s（纯 Python，约 1.6 ms/事件） |
+
+## 测试（本机全量回归）
+
+```bash
+python3 tests/test_modules.py          # 自动寻找 ../*.zip 或 *.evtx 作为样本
+WLF_CASE=/path/to/case.evtx python3 tests/test_modules.py
+```
+
+首次运行会把 System / TerminalServices 通道样本下载到 `tests/.cache/`（不入库）；
+离线时相关用例自动 SKIP。用例分六类：功能、边界、数据质量、多通道、性能、交叉验证。
+
+本机实测（macOS 14 / Python 3.9）：**48 个用例全部通过，总耗时约 5 分钟**；
+9707 条 Security 日志 `summary` 17.2s、`all` 16.1s。
 
 ## 实测
 
